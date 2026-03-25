@@ -53,7 +53,7 @@ func osUptime() (time.Duration, error) {
 	if err != nil {
 		return time.Duration(0), err
 	}
-	uptimeArray := strings.Split(string(data), " ")
+	uptimeArray := strings.Fields(string(data))
 	if len(uptimeArray) != 2 {
 		return time.Duration(0), fmt.Errorf("invalid /proc/uptime: %s", string(data))
 	}

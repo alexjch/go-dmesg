@@ -60,7 +60,10 @@ func (d *Decoder) scan(line chan interface{}) {
 	for d.scanner.Scan() {
 		line <- d.scanner.Text()
 	}
-	line <- d.scanner.Err()
+	if err := d.scanner.Err(); err != nil {
+		line <- err
+	}
+	close(line)
 }
 
 // notify receives a line from dmesg.Scanner and notifies
@@ -100,7 +103,10 @@ func (d *Decoder) Follow(f func(*Record)) error {
 		select {
 		case <-d.stop:
 			return nil
-		case line := <-c:
+		case line, ok := <-c:
+			if !ok {
+				return nil
+			}
 			if err := d.notify(line, f); err != nil {
 				return err
 			}
