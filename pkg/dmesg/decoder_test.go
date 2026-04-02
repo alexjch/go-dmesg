@@ -16,7 +16,7 @@ func TestDecoder(t *testing.T) {
 	}, "\n")
 
 	rc := io.NopCloser(strings.NewReader(raw))
-	s := &Scanner{
+	s := &KmsgScanner{
 		Scanner:    *bufio.NewScanner(rc),
 		ReadCloser: rc,
 	}
