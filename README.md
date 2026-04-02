@@ -7,6 +7,24 @@ This is a utility library to read `/dev/kmesg`
 import "github.com/alexjch/go-dmesg/pkg/dmesg"
 ```
 
+The function that creates the scanner should close it:
+```go
+scanner, err := dmesg.NewScanner()
+if err != nil {
+	log.Fatal(err)
+}
+defer scanner.Close()
+
+decoder := dmesg.NewDecoder(scanner)
+for decoder.Scan() {
+	record := decoder.Record()
+	_ = record
+}
+if err := decoder.Err(); err != nil {
+	log.Fatal(err)
+}
+```
+
 ## Quick start
 Sample code to understand how to use the library can be run as a command.
 ```

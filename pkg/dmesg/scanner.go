@@ -10,20 +10,26 @@ import (
 
 const devkmsg = "/dev/kmsg"
 
-// Scanner combines bufio.Scanner and io.ReadCloser
-// to wrap /dev/kmsg in a non-blocking manner.
+// Scanner wraps /dev/kmsg in a non-blocking manner and exposes
+// both scanning and close operations.
+//
+// The function that creates a Scanner is responsible for calling Close
+// when scanning is done.
 type Scanner struct {
 	bufio.Scanner
 	io.ReadCloser
 }
 
+// Close closes the underlying /dev/kmsg file descriptor.
 func (s Scanner) Close() error {
 	return s.ReadCloser.Close()
 }
 
-// NewScanner returns a dmesg.Scanner this primitive can
-// be used with dmesg.Decoder to read kernel messages as
-// dmesg.Record(s).
+// NewScanner creates a Scanner that tails /dev/kmsg from the current end
+// in non-blocking mode.
+//
+// The caller that instantiates the Scanner should defer Close to release
+// the underlying file descriptor.
 func NewScanner() (*Scanner, error) {
 	// Open /dev/kmsg for reading in a non-blocking manner
 	fd, err := syscall.Open(devkmsg, syscall.O_RDONLY|syscall.O_NONBLOCK, 0)
