@@ -10,7 +10,7 @@ import (
 
 const devkmsg = "/dev/kmsg"
 
-// Scanner combines around bufio.Scanner and io.ReadCloser
+// Scanner combines bufio.Scanner and io.ReadCloser
 // to wrap /dev/kmsg in a non-blocking manner.
 type Scanner struct {
 	bufio.Scanner
@@ -30,17 +30,14 @@ func NewScanner() (*Scanner, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Check if the file descriptor is valid
-	if fd < 0 {
-		return nil, os.NewSyscallError("open", err)
-	}
+
 	// Wrap a file descriptor in an os.File
 	f := os.NewFile(uintptr(fd), "")
 	// Seek to the end of the file
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		f.Close()
 		return nil, err
 	}
-	// Wrap an os.File in a bufio.Scanner
 	scanner := bufio.NewScanner(f)
 	return &Scanner{
 		Scanner:    *scanner,
