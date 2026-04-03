@@ -34,6 +34,6 @@ coverage-report: test
 	$(GO) tool cover -func=$(COVEROUT)
 
 build:
-	$(GO) build $(PKGS)
+	$(GO) build cmd/go-dmesg.go
 
 ci: fmt-check vet coverage-report build
