@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -15,9 +16,10 @@ import (
 // 	{decoder{scanner}}}
 
 func main() {
-	// Handle Ctrl-C
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	// Build a context canceled on Ctrl-C.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	// Create a scanner
 	scan, err := dmesg.NewScanner()
 	if err != nil {
@@ -29,15 +31,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	// Stop the decoder when Ctrl-C is pressed
-	go func() {
-		<-c
-		dec.Stop()
-	}()
-	// Follow the decoder until Ctrl-C is pressed
+
 	if err := dec.Follow(func(r *dmesg.Record) {
 		fmt.Println(r.String())
-	}); err != nil {
+	}, ctx); err != nil {
 		panic(err)
 	}
 }

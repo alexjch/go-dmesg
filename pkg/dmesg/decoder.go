@@ -2,8 +2,8 @@
 package dmesg
 
 import (
+	"context"
 	"errors"
-	"sync"
 )
 
 // Decoder is a dmesg.Decoder that wraps a dmesg.KmsgScanner
@@ -12,8 +12,6 @@ import (
 type Decoder struct {
 	*MonotonicDecoder
 	scanner *KmsgScanner
-	stop    chan struct{}
-	once    sync.Once
 }
 
 // NewDecoder returns a dmesg.Decoder that wraps a dmesg.KmsgScanner
@@ -24,12 +22,11 @@ func NewDecoder(s *KmsgScanner) (*Decoder, error) {
 	}
 	return &Decoder{
 		scanner:          s,
-		stop:             make(chan struct{}),
 		MonotonicDecoder: md,
 	}, nil
 }
 
-func (d *Decoder) decode(line string) (*Record, error) {
+func (d *Decoder) decodeLine(line string) (*Record, error) {
 	matches := kmsgMatches(line)
 
 	switch {
@@ -57,11 +54,11 @@ func (d *Decoder) decode(line string) (*Record, error) {
 // channel line. In case of an error the error is sent to the
 // channel line. The type of the value sent to the channel line
 // should be asserted by the caller.
-func (d *Decoder) scan(line chan interface{}) {
+func (d *Decoder) scan(line chan interface{}, ctx context.Context) {
 	for d.scanner.Scan() {
 		text := d.scanner.Text()
 		select {
-		case <-d.stop:
+		case <-ctx.Done():
 			// Stop signal received; exit without blocking on send.
 			return
 		case line <- text:
@@ -69,7 +66,7 @@ func (d *Decoder) scan(line chan interface{}) {
 	}
 	if err := d.scanner.Err(); err != nil {
 		select {
-		case <-d.stop:
+		case <-ctx.Done():
 			// Stop signal received; exit without blocking on send.
 			return
 		case line <- err:
@@ -78,59 +75,53 @@ func (d *Decoder) scan(line chan interface{}) {
 	close(line)
 }
 
-// notify receives a line from dmesg.KmsgScanner and notifies
-// the callback function f passed as argument with a dmesg.Record.
-// This function returns an error when the decoder fails to decode
-func (d *Decoder) notify(line interface{}, f func(*Record)) error {
+// decode converts a scanned item into a dmesg.Record.
+// It returns nil, nil for continuation lines.
+func (d *Decoder) decode(line interface{}) (*Record, error) {
 	switch v := line.(type) {
 	case string:
-		record, err := d.decode(v)
+		record, err := d.decodeLine(v)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Skip continuation lines
 		if record != nil {
-			f(record)
+			return record, nil
 		}
+		return nil, nil
 	case error:
-		return v
+		return nil, v
 	default:
-		return errors.New("invalid type")
+		return nil, errors.New("invalid type")
 	}
-	return nil
 }
 
 // Follow receives one line at a time from dmesg.KmsgScanner, decodes
 // it as a dmesg.Record, and passes the dmesg.Record to the callback
-// function f passed as argument. It returns an error if the scanner
-// returns an error. The function blocks until dmesg.Decoder.Stop()
-// is called.
-func (d *Decoder) Follow(f func(*Record)) error {
+// function f passed as argument. It returns an error if scanning or
+// decoding fails. The function returns when the scanner is exhausted
+// or when ctx is canceled.
+func (d *Decoder) Follow(f func(*Record), ctx context.Context) error {
 	c := make(chan interface{})
 	// Scan in a separate goroutine
-	go d.scan(c)
-	// Ensure that the scan goroutine is signalled to stop when Follow exits.
-	defer d.Stop()
+	go d.scan(c, ctx)
 	// Loop to read stop signal or notify
 	// the callback function with a dmesg.Record
 	for {
 		select {
-		case <-d.stop:
+		case <-ctx.Done():
 			return nil
 		case line, ok := <-c:
 			if !ok {
 				return nil
 			}
-			if err := d.notify(line, f); err != nil {
+			record, err := d.decode(line)
+			if err != nil {
 				return err
+			}
+			if record != nil {
+				f(record)
 			}
 		}
 	}
-}
-
-// Stop stops the dmesg.Decoder Follow() blocking call
-func (d *Decoder) Stop() {
-	d.once.Do(func() {
-		close(d.stop)
-	})
 }
